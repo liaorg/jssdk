@@ -1,0 +1,8 @@
+node_modules
+*.idea/
+.phpstorm.meta.php
+.DS_Store
+.svn
+.git
+.jsbeautifyrc
+.vscode

@@ -1,0 +1,21 @@
+<html>
+
+<head>
+    <!-- IE 场景下引入 polyfills，检查方法参考 https://github.com/angular/angular.js/blob/master/src/Angular.js#L165-L170 -->
+    <script>
+        if (window.document.documentMode) {
+            document.writeln(
+                '<script src="<%= htmlWebpackPlugin.files.chunks[\'polyfill\'].entry %>" crossorigin="anonymous"><\/script>'
+            );
+        }
+    </script>
+</head>
+
+<body>
+    <!-- 引入非 polyfill chunks -->
+    <% for (var chunk in htmlWebpackPlugin.files.chunks) { if (chunk !== 'polyfill') { %>
+    <script src="<%= htmlWebpackPlugin.files.chunks[chunk].entry %>" crossorigin="anonymous"></script>
+    <% }} %>
+</body>
+
+</html>
