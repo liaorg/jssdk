@@ -2,6 +2,8 @@
 
 ### 打包说明
 ```
+npm i
+
 修改配置文件 webpack.config.js
 
 npm run build
