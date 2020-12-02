@@ -1,0 +1,60 @@
+{
+  "eslint.alwaysShowStatus": true,
+  "eslint.format.enable": true,
+  "editor.codeActionsOnSave": {
+    "source.fixAll.eslint": true,
+    "source.organizeImports": false,
+    "source.fixAll": true
+  },
+  "editor.defaultFormatter": "esbenp.prettier-vscode",
+  "javascript.format.insertSpaceBeforeFunctionParenthesis": true,
+  "vetur.format.defaultFormatter.html": "js-beautify-html",
+  "vetur.format.defaultFormatter.js": "vscode-typescript",
+  "vetur.format.defaultFormatterOptions": {
+    "js-beautify-html": {
+      "wrap_attributes": "force-aligned"
+    }
+  },
+  "eslint.validate": [
+    "javascript",
+    "html",
+    "vue",
+    "javascriptreact",
+    "typescript",
+    "typescriptreact"
+  ],
+  "eslint.options": {
+    "plugins": ["html", "react", "prettier"]
+  },
+  "window.zoomLevel": 1,
+  "editor.formatOnSave": true,
+  "html.format.enable": false,
+  "editor.formatOnType": true,
+  "editor.formatOnPaste": true,
+  "editor.fontFamily": "Cascadia Code PL, Consolas, 'Courier New', monospace",
+  "editor.fontLigatures": true,
+  "html.format.indentHandlebars": true,
+  "html.format.preserveNewLines": true,
+  "html.format.indentInnerHtml": true,
+  "workbench.sideBar.location": "left",
+  "emmet.includeLanguages": {
+    "javascript": "javascriptreact",
+    "vue-html": "html"
+  },
+  "emmet.triggerExpansionOnTab": true,
+  "files.associations": {
+    "*.js": "javascriptreact",
+    "*.tsx": "javascriptreact"
+  },
+  "[javascript]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "terminal.integrated.shell.windows": "C:\\Program Files\\PowerShell\\7-preview\\pwsh.exe",
+  "workbench.colorTheme": "Monokai Dimmed",
+  "prettier.semi": true,
+  "prettier.singleQuote": true,
+  "prettier.jsxBracketSameLine": true,
+  "prettier.trailingComma": "all",
+  "json.format.enable": true,
+  "rest-client.fontSize": 14
+}
