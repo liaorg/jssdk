@@ -1,6 +1,7 @@
 # UtilsSDK 工具
 
 ### 打包说明
+
 ```
 npm i
 
@@ -13,6 +14,7 @@ npm start
 ```
 
 ### 上传文件功能
+
 ```
 <script src="./dist/uploadfile.js"></script>
 <script>
@@ -42,6 +44,5 @@ npm start
         success: null
     }
     UtilsSDK.uploadFile(opts)
-<script>
+</script>
 ```
-
