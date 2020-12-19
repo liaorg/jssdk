@@ -18,7 +18,7 @@ npm start
 ```javascript
 <script src="./dist/uploadfile.js"></script>
 <script>
-    const opts = {
+    const uploadOpts = {
         // 容器
         container: document.getElementById('container'),
         // 文字
@@ -36,7 +36,7 @@ npm start
         chunkSize: 10485760,
         // 上传大小限制字节 100M = 100 * 1024 * 1024
         uploadLimit: 104857600,
-        // 上传文件类型限制，默认支持：zip encryZip image(gif/png/jpe) png jpe gif
+        // 上传文件类型限制，必填，默认支持：zip encryZip image(gif/png/jpe) png jpe gif
         typeLimit: 'zip',
         // 用户自定义文件类型判断函数，异步函数
         // 接收三个参数：file, blobToString, typeLimit
@@ -47,6 +47,12 @@ npm start
         // 上传失败后的业务处理调用
         error: null,
     }
-    UtilsSDK.uploadFile(opts)
+    UtilsSDK.uploadFile(uploadOpts)
 </script>
+```
+
+```javascript
+es6模块：
+import { uploadFile } from './uploadfile';
+uploadFile(uploadOpts);
 ```
