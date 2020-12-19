@@ -16,7 +16,7 @@ const opts = {
   // 上传大小限制字节 2G 1024*1024*1024*2
   uploadLimit: 2147483648,
   //uploadLimit: 10 * 1024 * 1024,
-  // 上传文件类型限制，默认支持：zip encryZip image(gif/png/jpe) png jpe gif
+  // 上传文件类型限制，必填，默认支持：zip encryZip image(gif/png/jpe) png jpe gif
   typeLimit: 'zip',
   // 用户自定义文件类型判断函数，异步函数
   // 接收三个参数：file, blobToString, typeLimit

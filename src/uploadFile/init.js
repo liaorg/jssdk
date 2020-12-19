@@ -19,7 +19,7 @@ const uploadFile = (opts = {}) => {
     chunkSize: 10485760,
     // 上传大小限制字节 100M = 100 * 1024 * 1024
     uploadLimit: 104857600,
-    // 上传文件类型限制，默认支持：zip encryZip image(gif/png/jpe) png jpe gif
+    // 上传文件类型限制，必填，默认支持：zip encryZip image(gif/png/jpe) png jpe gif
     typeLimit: 'zip',
     // 用户自定义文件类型判断函数，异步函数
     // 接收三个参数：file, blobToString, typeLimit
