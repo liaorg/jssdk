@@ -3,150 +3,111 @@
 namespace Admin\Controller;
 
 use Think\Controller;
-use Common\Util\FleaUpload;
+use Common\Util\Upload;
+
 
 /**
  * 文件上传制器
  */
 class UploadController extends Controller
 {
-  public function _initialize()
-  {
-    $this->uploadDir = WEB_ROOT . '/Upload';
-  }
-  // 文件检查
-  public function checkfile()
-  {
-    // 获取接口传的参数
-    $params = $this->getParams();
-    $ext = $params['ext'];
-    $hash = $params['hash'];
-    
-    $filePath = $hash ? $this->uploadDir . "/$hash.$ext" : '';
-    $chunkdDir = $this->uploadDir . "/$hash";
-    
-    $uploaded = false;
-    $uploadedList = [];
-    if (file_exists($filePath)) {
-      // 文件存在
-      $uploaded = true;
-    } else {
-      $uploadedList = $this->getUploadedList($chunkdDir);
+    public function _initialize()
+    {
+        $config = array(
+            'webRoot' => WEB_ROOT,
+            // 上传文件类型限制，默认支持：zip encryZip image(gif/png/jpe) png jpe gif
+            'typeLimit' => 'flv',
+        );
+        $this->upload = new Upload($config);
     }
-    /* http_response_code(500);
-    headers_sent(); */
-    $this->returnSuccess([
-      'uploaded' => $uploaded,
-      'uploadedList' => $uploadedList,
-    ]);
-  }
-  // 文件上传
-  public function uploadfile()
-  {
-    $name = I('post.name');
-    $hash = I('post.hash');
-    // 模拟报错
-    if(random_int(0, 10) > 2){
-      http_response_code(500);
-      headers_sent();
-      $this->returnError('error', 500);
+    // 文件检查
+    public function checkfile()
+    {
+        $result = $this->upload->checkfile();
+        $this->returnSuccess($result['data']);
     }
-    $chunkdDir = $this->uploadDir . "/$hash";
-    if (!is_dir($chunkdDir)) {
-      mkdir($chunkdDir);
-      chmod($chunkdDir, 0777);
-    }
-    
-    $filename = $chunkdDir . '/' . $name;
-    move_uploaded_file($_FILES['chunk']['tmp_name'], $filename);
-    $this->returnMessage('切片上传成功');
-  }
-  // 文件合并
-  public function mergefile()
-  {
-    $params = $this->getParams();
-    $ext = $params['ext'];
-    $hash = $params['hash'];
-    $size = $params['size'];
-    
-    $filePath = $this->uploadDir . "/$hash.$ext";
-    $chunkdDir = $this->uploadDir . "/$hash";
-
-    $chunks = $this->getUploadedList($chunkdDir);
-    // 文件重新排序
-    usort($chunks, function($a, $b){
-      return explode('-', $a)[1] - explode('-', $b)[1];
-    });
-    // 合并操作
-    $handle = fopen($filePath, 'w+b');
-    foreach ($chunks as $key => $file) {
-      $content = file_get_contents($chunkdDir . '/' .$file);
-      fwrite($handle, $content);
-    }
-    fclose($handle);
-    $cmd = "/mnt/heidun/apacheroot 'rm -rf $chunkdDir'";
-    exec($cmd, $result, $i);
-    $this->returnSuccess();
-  }
-  
-  
-  // 获取上传的文件
-  private function getUploadedList($dirPath)
-  {
-    if (is_dir($dirPath)) {
-      $files = scandir($dirPath);
-      $files = array_filter($files, function($file, $key){
-        if ($file != '.' && $file != '..') {
-          return true;
+    // 文件上传
+    public function uploadfile()
+    {
+        $result = $this->upload->uploadfile();
+        if ($result['status']) {
+            /* if ($result['data']['checkType']) {
+                // 用户自定义文件类型判断
+                $file = $result['chunkDir'] . $result['data']['firstFileName'];
+                $blob = file_get_contents($file, NULL, NULL, 0, 100);
+                $headFlag = $this->upload->blobToString($blob);
+                if (!strpos($headFlag, '75 70 64 61 74 65 2E 74 67 7A')) {
+                    // 不是正确的升级包
+                    // 删除上传的文件
+                    $this->upload->rmFile(dirname($file));
+                    $msg = array(
+                        'errmsg' => 'custom filetype error',
+                    );
+                    $this->returnServerError(412, $msg);
+                }
+            } */
+            unset($result['data']['firstFileName']);
+            $this->returnSuccess($result['data']);
         } else {
-          return false;
+            $this->returnServerError($result['code'], $result['data']);
         }
-      }, ARRAY_FILTER_USE_BOTH);
-      return array_values($files);
-    } else {
-      return [];
     }
-  }
-
-  private function returnSuccess($data = [])
-  {
-    echo json_encode([
-      'code' => 0,
-      'data' => $data
-    ]);
-    exit;
-  }
-  private function returnMessage($message = '')
-  {
-    echo json_encode([
-      'code' => 0,
-      'message' => $message
-    ]);
-    exit;
-  }
-  private function returnError($message = '', $code = -1, $errors = [])
-  {
-    echo json_encode([
-      'code' => $code,
-      'message' => $message,
-      'errors' => $errors
-    ]);
-    exit;
-  }
-  /**
-   * 获取接口传的参数
-   * @return array
-   */
-  private function getParams()
-  {
-    $request = I('post.');
-    if ($request) {
-      return $request;
-    } else {
-      $request = file_get_contents('php://input');
-      $params = json_decode($request, true);
-      return $params ? $params : array();
+    // 文件合并
+    public function mergefile()
+    {
+        $result = $this->upload->mergefile();
+        if ($result['status']) {
+            $this->returnSuccess($result['data']);
+        } else {
+            $this->returnServerError($result['code'], $result['data']);
+        }
     }
-  }
-
+    /**
+    * 成功时的返回
+    *
+    */
+    private function returnSuccess($data = [])
+    {
+        echo json_encode([
+          'code' => 0,
+          'data' => $data
+        ]);
+        exit;
+    }
+    /**
+    * 成功时返回简单的信息
+    *
+    */
+    private function returnMessage($message = '')
+    {
+        echo json_encode([
+          'code' => 0,
+          'message' => $message
+        ]);
+        exit;
+    }
+    /**
+    * 失败时的返回
+    *
+    */
+    private function returnError($message = '', $code = -1, $errors = [])
+    {
+        echo json_encode([
+          'code' => $code,
+          'message' => $message,
+          'errors' => $errors
+        ]);
+        exit;
+    }
+    /**
+    * 失败时的返回
+    *
+    */
+    private function returnServerError($code, $data = [])
+    {
+        http_response_code($code);
+        headers_sent();
+        $this->returnError($data['errmsg'], $code);
+        exit;
+    }
 }

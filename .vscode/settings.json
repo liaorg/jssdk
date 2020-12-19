@@ -46,15 +46,14 @@
     "*.js": "javascriptreact",
     "*.tsx": "javascriptreact"
   },
-  "[javascript]": {
-    "editor.defaultFormatter": "esbenp.prettier-vscode"
-  },
   "terminal.integrated.shell.windows": "C:\\Program Files\\PowerShell\\7-preview\\pwsh.exe",
-  "workbench.colorTheme": "Monokai Dimmed",
+  "workbench.colorTheme": "One Dark Pro",
   "prettier.semi": true,
   "prettier.singleQuote": true,
   "prettier.jsxBracketSameLine": true,
   "prettier.trailingComma": "all",
+  "prettier.tabWidth": 4,
   "json.format.enable": true,
-  "rest-client.fontSize": 14
+  "rest-client.fontSize": 14,
+  "javascript.implicitProjectConfig.experimentalDecorators": true
 }

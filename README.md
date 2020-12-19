@@ -15,7 +15,7 @@ npm start
 
 ### 上传文件功能
 
-```
+```javascript
 <script src="./dist/uploadfile.js"></script>
 <script>
     const opts = {
@@ -31,17 +31,21 @@ npm start
             mergeFile: '/mergefile',
         },
         // 上传并发数
-        limit: 4,
+        limit: 5,
         // 切片大小 10M = 10 * 1024 * 1024
         chunkSize: 10485760,
         // 上传大小限制字节 100M = 100 * 1024 * 1024
         uploadLimit: 104857600,
-        // 上传文件类型限制
+        // 上传文件类型限制，默认支持：zip encryZip image(gif/png/jpe) png jpe gif
         typeLimit: 'zip',
-        // 特定的文件类型判断函数，异步函数
-        checkFileType: null,
+        // 用户自定义文件类型判断函数，异步函数
+        // 接收三个参数：file, blobToString, typeLimit
+        // 返回 true|false
+        customerCheckFileType: null,
         // 上传成功后的业务处理调用
-        success: null
+        success: null,
+        // 上传失败后的业务处理调用
+        error: null,
     }
     UtilsSDK.uploadFile(opts)
 </script>

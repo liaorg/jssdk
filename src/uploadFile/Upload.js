@@ -71,12 +71,11 @@ const style = `<style>
 }
 
 .drag-text {
-  visibility: visible;
   height: auto;
   opacity: 1;
   transition: opacity 1s;
   position: absolute;
-  top: 20px;
+  top: 23px;
   width: 100%;
   left: 0;
 }
@@ -144,8 +143,8 @@ const style = `<style>
   transition: all 0.4s;
 }
 
-.cube-container .cube>.uploading {
-  background: #409eff url(/static/images/loading.gif) no-repeat 50%;
+.cube-container .cube.uploading {
+  background: #ebeef5 url(/static/images/loading.gif) no-repeat 50%;
 }
 
 .cube-container .cube>.success {
@@ -199,6 +198,12 @@ class Upload {
     this.hashProgress = 0;
     // 文件上传中
     this.uploading = false;
+    this.freeSize = 0;
+    // 上传进度
+    this.process = 0;
+    this.startTime = 0;
+    this.token = null;
+    this.actualType = '';
 
     this.$progress = null;
     this.$progressMeter = null;
@@ -225,7 +230,7 @@ class Upload {
       `<div id="upload-wrapper" class="upload-wrapper">
           <div id="upload-text" class="upload-text">
               <div id="upload-drag-wrapper" class="upload-drag-wrapper">
-                  <span id="drag-text" class="drag-text">将文件拖到方框内，或<em>点击选择文件</em></span>
+                  <span id="drag-text" class="drag-text">将文件拖到方框内，或 <em>点击选择文件</em></span>
                   <span id="processing-text" class="processing-text">
                       <span id="drag-filename" class="drag-filename"></span>
                       <span id="hash-progress" class="hash-progress">0%</span>
@@ -283,9 +288,6 @@ class Upload {
       // 当被拖动的对象在另一对象容器范围内拖动时触发此事件
       e.preventDefault();
       e.stopPropagation();
-      if (this.hashProgressing) {
-        return;
-      }
       $drag.style.borderColor = '#409eff';
     });
     $drag.addEventListener('dragleave', (e) => {
@@ -293,9 +295,6 @@ class Upload {
       // 当被鼠标拖动的对象离开其容器范围内时触发此事件
       e.preventDefault();
       e.stopPropagation();
-      if (this.hashProgressing) {
-        return;
-      }
       $drag.style.borderColor = '#d9d9d9';
     });
     $drag.addEventListener('drop', (e) => {
@@ -303,12 +302,25 @@ class Upload {
       // 在一个拖动过程中，释放鼠标键时触发此事件
       e.preventDefault();
       e.stopPropagation();
+      $drag.style.borderColor = '#d9d9d9';
       if (this.hashProgressing) {
         return;
       }
-      $drag.style.borderColor = '#d9d9d9';
+      if (this.uploading) {
+        this.uploadTip('已有文件在上传中...');
+        return;
+      }
       this.file = e.dataTransfer.files[0];
-      this.processInit();
+      this.processInit().then(() => {
+        if (ret === false) {
+          // 重新初始化状态
+          this.file = null;
+          this.chunks = [];
+          this.$uploadProgressWrapper.style.display = 'none';
+          this.$cubeContainer.innerHTML = '';
+          this.setUploadProgress(0);
+        }
+      });
     });
 
     // 文件变化时
@@ -318,12 +330,25 @@ class Upload {
         return;
       }
       this.file = file;
-      this.processInit();
+      this.processInit().then((ret) => {
+        if (ret === false) {
+          // 重新初始化状态
+          this.file = null;
+          this.chunks = [];
+          this.$uploadProgressWrapper.style.display = 'none';
+          this.$cubeContainer.innerHTML = '';
+          this.setUploadProgress(0);
+        }
+      });
     };
     $uploadText.onclick = (e) => {
       e.preventDefault(e);
       e.stopPropagation(e);
       if (this.hashProgressing) {
+        return;
+      }
+      if (this.uploading) {
+        this.uploadTip('已有文件在上传中...');
         return;
       }
       $uploadfile.click();
@@ -340,13 +365,14 @@ class Upload {
         return;
       }
       if (this.uploading) {
-        this.uploadTip('文件上传中...');
+        this.uploadTip('已有文件在上传中...');
         return;
       }
-      const status = await this.uploadFile();
+      const result = await this.uploadFile();
+      this.process = 0;
       this.uploading = false;
       // 上传成功
-      if (status) {
+      if (result.status) {
         this.chunks.forEach((chunk, index) => {
           if (chunk.progress != 100) {
             // 渲染分片进度
@@ -354,13 +380,17 @@ class Upload {
             this.cubePregress(chunk);
           }
         });
+        this.setMeregFileProgress(100);
         this.setUploadProgress(100);
         this.uploadSuccess('上传成功');
         if (typeof this.opts.success === 'function') {
           this.opts.success();
         }
       } else {
-        this.uploadError('文件上传失败');
+        this.uploadError(result.msg);
+        if (typeof this.opts.error === 'function') {
+          this.opts.error(result.msg);
+        }
       }
     };
   }
@@ -368,6 +398,12 @@ class Upload {
   uploadTip(msg) {
     this.$uploadTip.className = 'upload-tip';
     this.$uploadTip.innerText = msg;
+    this.hideUploadTip();
+  }
+  hideUploadTip() {
+    setTimeout(() => {
+      this.$uploadTip.innerText = '';
+    }, 3000);
   }
   uploadError(msg) {
     this.$uploadTip.className = 'upload-tip upload-error';
@@ -380,6 +416,7 @@ class Upload {
 
   // 处理文件初始化
   async processInit() {
+    this.process = 0;
     this.uploading = false;
     this.hashProgressing = false;
     this.chunks = [];
@@ -393,19 +430,18 @@ class Upload {
       ' 大小：<b>' +
       this.getReadableSizeStr(this.file.size) +
       '</b>';
-
     // 文件大小判断
-    if (this.file.uploadLimit && this.opts.uploadLimit < this.file.size) {
+    if (this.opts.uploadLimit && this.opts.uploadLimit < this.file.size) {
       this.uploadError(
         '请上传不大于 ' + this.getReadableSizeStr(this.opts.uploadLimit) + ' 的文件'
       );
-      return;
+      return false;
     }
     // 文件类型判断
     if (this.opts.typeLimit) {
       if (!(await this.checkFileType())) {
         this.uploadError('请上传正确的文件');
-        return;
+        return false;
       }
     }
 
@@ -421,15 +457,34 @@ class Upload {
   // 文件类型判断
   async checkFileType() {
     let bType = true;
-    if (this.opts.typeLimit === 'zip') {
-      bType = await this.isZip(this.file);
-    }
-    if (this.opts.typeLimit === 'image') {
-      bType = await this.isImage(this.file);
+    switch (this.opts.typeLimit) {
+      case 'encryZip':
+        bType = (await this.isZip(this.file)) && (await this.isEncryptZip(this.file));
+        break;
+      case 'zip':
+        bType = await this.isZip(this.file);
+        break;
+      case 'image':
+        bType = await this.isImage(this.file);
+        break;
+      case 'png':
+        bType = await this.isPng(this.file);
+        break;
+      case 'jpg':
+        bType = await this.isJpg(this.file);
+        break;
+      case 'gif':
+        bType = await this.isGif(this.file);
+        break;
+      default:
+        break;
     }
     // 用户自定义的判断函数
-    if (typeof this.opts.checkFileType === 'function') {
-      return bType && (await this.opts.checkFileType(this.file, this.blobToString));
+    if (typeof this.opts.customerCheckFileType === 'function') {
+      return (
+        bType &&
+        (await this.opts.customerCheckFileType(this.file, this.blobToString, this.opts.typeLimit))
+      );
     }
     return bType;
   }
@@ -450,8 +505,21 @@ class Upload {
     });
   }
   async isZip(file) {
-    const ret = await this.blobToString(file.slice(0, 4));
-    return ret == '50 4B 03 04';
+    const headFlag = await this.blobToString(file.slice(0, 4));
+    const ret = headFlag === '50 4B 03 04';
+    if (ret) {
+      this.actualType = 'zip';
+    }
+    return ret;
+  }
+  async isEncryptZip(file) {
+    // offset 6, general purpose bit flag: (2 bytes)
+    // bit 0: if set, indicates that the file is encrypted
+    const flag = await this.blobToString(file.slice(6, 7));
+    const zipBit = '0x' + flag;
+    const zipEncryptFlag = 0x1;
+    const utf8Flag = 0x800;
+    return (zipBit | utf8Flag) & zipEncryptFlag;
   }
   async isImage(file) {
     // 通过文件流来判定
@@ -462,21 +530,30 @@ class Upload {
     // GIF89a 和GIF87a
     // 前面6个16进制，'47 49 46 38 39 61' '47 49 46 38 37 61'
     // 16进制的抓安环
-    const ret = await this.blobToString(file.slice(0, 6));
-    const isGif = ret == '47 49 46 38 39 61' || ret == '47 49 46 38 37 61';
-    return isGif;
+    const headFlag = await this.blobToString(file.slice(0, 6));
+    const ret = headFlag === '47 49 46 38 39 61' || headFlag === '47 49 46 38 37 61';
+    if (ret) {
+      this.actualType = 'gif';
+    }
+    return ret;
   }
   async isPng(file) {
-    const ret = await this.blobToString(file.slice(0, 8));
-    const ispng = ret == '89 50 4E 47 0D 0A 1A 0A';
-    return ispng;
+    const headFlag = await this.blobToString(file.slice(0, 8));
+    const ret = headFlag === '89 50 4E 47 0D 0A 1A 0A';
+    if (ret) {
+      this.actualType = 'png';
+    }
+    return ret;
   }
   async isJpg(file) {
     const len = file.size;
     const start = await this.blobToString(file.slice(0, 2));
     const tail = await this.blobToString(file.slice(-2, len));
-    const isjpg = start == 'FF D8' && tail == 'FF D9';
-    return isjpg;
+    const ret = start === 'FF D8' && tail === 'FF D9';
+    if (ret) {
+      this.actualType = 'png';
+    }
+    return ret;
   }
 
   // 上传初始化
@@ -509,37 +586,55 @@ class Upload {
         index
       ] = `<div class="cube"><div id="${chunk.name}" class="${cubeClass}" style="height:${chunk.progress}%"></div></div>`;
     });
+    if (cube.length) {
+      cube.push(
+        `<div class="cube"><div id="meregfile-${this.chunks.length}" class="" style="height:0%"></div></div>`
+      );
+    }
     this.$cubeContainer.innerHTML = cube.join('');
   }
   // 分片进度
   cubePregress(chunk) {
-    let cubeClass = 'uploading';
+    let cubeClass = '';
     if (chunk.progress == 100) {
       cubeClass = 'success';
     } else if (chunk.progress < 0) {
       chunk.progress = 50;
       cubeClass = 'error';
+    } else if (chunk.progress > 0) {
+      cubeClass = 'uploading';
     }
     let cube = document.getElementById(chunk.name);
     cube.style.height = `${chunk.progress}%`;
+    cube.parentNode.className = 'cube ' + cubeClass;
     cube.className = cubeClass;
   }
   // 整体进度
   uploadProgress() {
-    if (!this.file || this.chunks.length) {
+    if (!this.file || !this.chunks.length) {
       this.setUploadProgress(0);
+    } else {
+      const loaded = this.chunks
+        .map((item) => item.chunk.size * item.progress)
+        .reduce((acc, cur) => acc + cur, 0);
+      let progress = parseInt((loaded / this.file.size).toFixed(2));
+      // -10 因为要留10%给合并文件的请求
+      if (progress >= 90) {
+        progress = progress > 10 ? progress - 10 : progress;
+      }
+      this.setUploadProgress(progress);
     }
-    const loaded = this.chunks
-      .map((item) => item.chunk.size * item.progress)
-      .reduce((acc, cur) => acc + cur, 0);
-    let progress = parseInt((loaded / this.file.size).toFixed(2));
-    // -10 因为要留10%给合并文件的请求
-    progress = progress > 10 ? progress - 10 : progress;
-    this.setUploadProgress(progress);
   }
   setUploadProgress(progress) {
+    progress = this.process > progress ? this.process : progress;
+    this.process = progress;
     this.$progressMeter.innerText = `${progress}%`;
     this.$progress.value = progress;
+  }
+  // 文件合并进度
+  setMeregFileProgress(progress) {
+    const meregCube = { name: 'meregfile-' + this.chunks.length, progress: progress };
+    this.cubePregress(meregCube);
   }
   // 计算文件 hash
   async calculateHash() {
@@ -551,9 +646,9 @@ class Upload {
     const hash = await this.calculateHashSample();
     // console.log(hash)
     // 利用 worker 计算文件 hash
-    // const hash1 = await this.calculateHashWorker(chunks)
+    // const hash = await this.calculateHashWorker(chunks);
     // 利用浏览器空余时间计算 hash
-    // const hash2 = await this.calculateHashIdle(chunks)
+    // const hash = await this.calculateHashIdle(chunks)
     // console.log(hash2)
     this.hash = hash;
     // hash进度
@@ -580,9 +675,9 @@ class Upload {
    */
   async uploadFile() {
     if (!this.file) {
-      console.log('请选择文件');
-      return false;
+      return { status: false, msg: '请选择文件' };
     }
+    this.process = 0;
     this.uploading = true;
     // 判断格式
     // 问一下后端，文件是否上传过，如果没有，是否有存在的切片
@@ -591,28 +686,34 @@ class Upload {
       checkData = await Axios.post(this.opts.url.checkFile, {
         hash: this.hash,
         ext: this.file.name.split('.').pop(),
+        filesize: this.file.size,
+        freeSize: this.freeSize,
       });
     } catch (e) {
-      this.uploadError('上传文件失败，请检查网络');
-      return false;
+      return { status: false, msg: '上传文件失败，请检查网络' };
     }
     const {
       data: {
-        data: { uploaded, uploadedList },
+        data: { uploaded, uploadedList, freeSize, startTime, token },
       },
     } = checkData;
     if (uploaded) {
       // 秒传
-      // console.log('秒传成功')
-      return true;
+      return { status: true, msg: '秒传成功' };
     }
+    this.freeSize = freeSize;
+    this.startTime = startTime;
+    this.token = token;
+    this.setUploadProgress(0);
     this.chunks.forEach((chunk, index) => {
       // 切片的名字 hash+index
-      const name = this.hash + '-' + index;
+      // 这里的判断 hash 要重新md5一次，因为后台多了一次
+      const name = SparkMD5.hash(chunk.hash) + '-' + index;
       chunk.progress = uploadedList.indexOf(name) > -1 ? 100 : 0;
       // 渲染分片进度
       this.cubePregress(chunk);
     });
+    this.setMeregFileProgress(0);
     this.uploadProgress();
     // 上传切片
     return await this.uploadChunks(uploadedList);
@@ -703,6 +804,7 @@ class Upload {
       this.worker.onmessage = (e) => {
         const { progress, hash } = e.data;
         this.hashProgress = Number(progress.toFixed(2));
+        this.setHashProgress();
         if (hash) {
           resolve(hash);
         }
@@ -758,20 +860,30 @@ class Upload {
   async uploadChunks(uploadedList = []) {
     const requests = this.chunks
       // 过滤已经上传过的
-      .filter((chunk) => uploadedList.indexOf(chunk.name) == -1)
+      .filter((chunk) => {
+        // 这里的判断 hash 要重新md5一次，因为后台多了一次
+        const name = SparkMD5.hash(chunk.hash) + '-' + chunk.index;
+        return uploadedList.indexOf(name) == -1;
+      })
       .map((chunk, index) => {
         // 转成promise
         const form = new FormData();
         form.append('chunk', chunk.chunk);
         form.append('hash', chunk.hash);
         form.append('name', chunk.name);
-        // form.append('index',chunk.index)
+        form.append('filesize', this.file.size);
+        form.append('freeSize', this.freeSize);
+        form.append('token', this.token);
+        form.append('typeLimit', this.opts.typeLimit);
+        form.append('index', chunk.index);
+        form.append('actualType', this.actualType);
         return {
           form,
           index: chunk.index,
           error: 0,
         };
       });
+
     // 当是 sendRequest 时要注释掉 map 和 await Promise.all(requests)
     // .map(({
     //     form,
@@ -791,7 +903,7 @@ class Upload {
     // 异步的并发控制，
     const requestStatus = await this.sendRequest(requests);
     // console.log('requestStatus', requestStatus)
-    if (!requestStatus) {
+    if (!requestStatus.status) {
       return requestStatus;
     }
 
@@ -814,6 +926,9 @@ class Upload {
    * @param {Object} requests
    */
   async sendRequest(requests) {
+    if (!requests.length) {
+      return { status: true, msg: '上传成功' };
+    }
     // limit仕并发数
     // 一个数组,长度仕limit
     // [task12,task13,task4]
@@ -833,6 +948,12 @@ class Upload {
           this.chunks[index].progress = 15;
           this.cubePregress(this.chunks[index]);
           try {
+            if (index === 0) {
+              form.append('first', 1);
+            }
+            if (index === this.chunks.length - 1) {
+              form.append('last', 1);
+            }
             await Axios.post(this.opts.url.uploadFile, form, {
               onUploadProgress: (progress) => {
                 // 不是整体的进度条了，而是每个区块有自己的进度条，整体的进度条需要计算
@@ -846,11 +967,24 @@ class Upload {
             });
             if (counter == len - 1) {
               // 最后一个任务
-              resolve(true);
+              resolve({ status: true, msg: '上传成功' });
             } else {
               counter++;
-              // 启动下一个任务
-              start();
+              if (limit > 0) {
+                // 第一次请求完再开始并发，一些文件的判断在第一次上传的时候由后台完成
+                while (limit > 0) {
+                  // 启动limit个任务
+                  start();
+                  // 模拟一下延迟
+                  // setTimeout(() => {
+                  //     start()
+                  // }, Math.random() * 2000)
+                  limit -= 1;
+                }
+              } else {
+                // 启动下一个任务
+                start();
+              }
             }
           } catch (e) {
             this.chunks[index].progress = -1;
@@ -858,8 +992,15 @@ class Upload {
             if (e.response.status === 413) {
               isStop = true;
               this.uploading = false;
-              this.uploadError('文件上传失败，上传文件大小超出服务器限制');
-              reject(false);
+              resolve({ status: false, msg: '文件上传失败，切片大小超出限制' });
+            } else if (e.response.status === 412) {
+              isStop = true;
+              this.uploading = false;
+              resolve({ status: false, msg: '文件上传失败，文件类型错误' });
+            } else if (e.response.status === 403) {
+              isStop = true;
+              this.uploading = false;
+              resolve({ status: false, msg: '文件上传失败，没有操作权限' });
             } else {
               if (task.error < 3) {
                 task.error++;
@@ -869,36 +1010,49 @@ class Upload {
                 // 错误三次
                 isStop = true;
                 this.uploading = false;
-                this.uploadError('文件上传失败，请重新上传');
-                reject(false);
+                resolve({ status: false, msg: '文件上传失败，连续多次上传错误' });
               }
             }
           }
         }
       };
-
-      while (limit > 0) {
-        // 启动limit个任务
-        start();
-        // 模拟一下延迟
-        // setTimeout(() => {
-        //     start()
-        // }, Math.random() * 2000)
-        limit -= 1;
-      }
+      start();
     });
   }
   /**
    * 文件合并
    */
   async mergeRequest() {
-    const ret = await Axios.post(this.opts.url.mergeFile, {
-      ext: this.file.name.split('.').pop(),
-      size: this.opts.chunkSize,
-      hash: this.hash,
-    });
-    // console.log('ret', ret)
-    return !ret.code;
+    try {
+      this.setMeregFileProgress(15);
+      const ret = await Axios.post(this.opts.url.mergeFile, {
+        ext: this.file.name.split('.').pop(),
+        hash: this.hash,
+        filesize: this.file.size,
+        freeSize: this.freeSize,
+        startTime: this.startTime,
+        token: this.token,
+      });
+      if (ret.data.data.spentTime) {
+        console.log('spent ', ret.data.data.spentTime + ' seconds');
+      }
+      if (!ret.data.code) {
+        // this.setMeregFileProgress(100);
+        return { status: true, msg: '合并切片成功' };
+      } else {
+        this.setMeregFileProgress(-1);
+        return { status: false, msg: '上传失败' };
+      }
+    } catch (e) {
+      this.uploading = false;
+      this.setMeregFileProgress(-1);
+      if (e.response.status === 403) {
+        return { status: false, msg: '文件上传失败，没有操作权限' };
+      } else if (e.response.status === 412) {
+        return { status: false, msg: '文件上传失败，文件 hash 错误' };
+      }
+      return { status: false, msg: '文件上传失败，未知错误' };
+    }
   }
   /**
    * 把文件大小转换为易读的单位
