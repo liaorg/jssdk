@@ -27,11 +27,9 @@ const opts = {
     // console.log('update.tgz', ret.indexOf('75 70 64 61 74 65 2E 74 67 7A'))
     return ret.indexOf('75 70 64 61 74 65 2E 74 67 7A') !== -1;
   },
-  // 上传成功后的业务处理调用
-  success: () => {
-    alert(233);
+  // 上传成功后的业务处理调用，参数为返回信息
+  success: (data) => {
+    console.log('response', data);
   },
-  // 上传失败后的业务处理调用
-  error: null,
 };
 uploadFile(opts);

@@ -311,7 +311,7 @@ class Upload {
         return;
       }
       this.file = e.dataTransfer.files[0];
-      this.processInit().then(() => {
+      this.processInit().then((ret) => {
         if (ret === false) {
           // 重新初始化状态
           this.file = null;
@@ -384,7 +384,7 @@ class Upload {
         this.setUploadProgress(100);
         this.uploadSuccess('上传成功');
         if (typeof this.opts.success === 'function') {
-          this.opts.success();
+          this.opts.success(result.data);
         }
       } else {
         this.uploadError(result.msg);
@@ -694,12 +694,12 @@ class Upload {
     }
     const {
       data: {
-        data: { uploaded, uploadedList, freeSize, startTime, token },
+        data: { uploaded, uploadedList, freeSize, startTime, token, upgradeTip, upgradeparam },
       },
     } = checkData;
     if (uploaded) {
       // 秒传
-      return { status: true, msg: '秒传成功' };
+      return { status: true, msg: '秒传成功', data: { upgradeTip, upgradeparam } };
     }
     this.freeSize = freeSize;
     this.startTime = startTime;
@@ -1033,12 +1033,13 @@ class Upload {
         startTime: this.startTime,
         token: this.token,
       });
-      if (ret.data.data.spentTime) {
-        console.log('spent ', ret.data.data.spentTime + ' seconds');
+      const { data = {}, code } = ret.data;
+      if (data.spentTime) {
+        console.log('spent ', data.spentTime + ' seconds');
       }
-      if (!ret.data.code) {
+      if (!code) {
         // this.setMeregFileProgress(100);
-        return { status: true, msg: '合并切片成功' };
+        return { status: true, msg: '合并切片成功', data: data };
       } else {
         this.setMeregFileProgress(-1);
         return { status: false, msg: '上传失败' };

@@ -5,6 +5,35 @@ namespace Common\Util;
 /**
  * 文件上传类类
  * @package Common\Util
+ * $config = array(
+ *      // web根路径
+ *      'webRoot' => '/www/',
+ *      // 上传文件路径
+ *      'uploadDir' => '/tmp/Upload/',
+ *      // 分片文件路径
+ *      'chunkDir' => '/tmp/Upload/',
+ *      // 是否自动设置上传路径
+ *      // 当为 true 时，会根据/tmp 上当的大小，
+ *      // 将上传路径自动设置为 /tmp/Upload/ 目录或者 webRoot/Upload/
+ *      'autoSetPath' => true,
+ *      // 判断/tmp/空间的倍数
+ *      'tmpMultiple' => 2,
+ *      // 分片大小 切片大小 10M = 10 * 1024 * 1024 = 10485760
+ *      'chunkSize' => 10485760,
+ *      // 最小空间 100M
+ *      'frozenSize' => 104857600,
+ *      // 上传文件类型限制
+ *      // 必须有值且前端传值必须与此相同
+ *      'typeLimit' => 'zip',
+ *  );
+ *  $upload = new Upload($config);
+ *  // 要实现的接口调用
+ *  // 文件检查
+ *  $result = $upload->checkfile();
+ *  // 分片文件上传
+ *  $result = $upload->uploadfile();
+ *  // 分片文件合并
+ *  $result = $upload->mergefile();
  */
 class Upload
 {
@@ -16,14 +45,17 @@ class Upload
     public function __construct($config = array())
     {
         $this->opts = array(
-            // 上传文件路径
+            // web根路径
             'webRoot' => '/www',
             // 上传文件路径
-            'uploadDir' => '/tmp/',
+            'uploadDir' => '/tmp/Upload/',
             // 分片文件路径
-            'chunkDir' => '/tmp/',
+            'chunkDir' => '/tmp/Upload/',
             // 是否自动设置上传路径
+            // 当为 true 时，会根据/tmp 上当的大小，
+            // 将上传路径自动设置为 /tmp/Upload/ 目录或者 webRoot/Upload/
             'autoSetPath' => true,
+            'tmpMultiple' => 2,
             // 分片大小 切片大小 10M = 10 * 1024 * 1024 = 10485760
             'chunkSize' => 10485760,
             // 最小空间 100M
@@ -31,6 +63,7 @@ class Upload
             // 上传文件类型限制，默认支持：zip encryZip image(gif/png/jpe) png jpe gif
             // 必须有值且前端传值必须与此相同
             'typeLimit' => 'zip',
+            'file' => array(),
         );
         $this->opts = array_merge($this->opts, $config);
     }
@@ -43,10 +76,17 @@ class Upload
         $params = $this->getParams();
         $ext = $params['ext'];
         $hash = trim($params['hash']);
+        $oldHash = $hash;
         $hash = $hash ? md5($hash) : '';
         $filesize = $params['filesize'];
         $freeSize = $this->initUploadDir($filesize, $hash, 0);
 
+        $this->opts['file'] = array(
+            'oldHash' => $oldHash,
+            'hash' => $hash,
+            'ext' => $ext
+        );
+        
         if (!$hash) {
             $hash = md5(time());
         }
@@ -73,6 +113,8 @@ class Upload
               'freeSize' => $freeSize,
               'startTime' => $startTime,
               'token' => $token,
+              'upgradeTip' => '',
+              'upgradeparam' => '',
           )
         );
     }
@@ -83,6 +125,7 @@ class Upload
         // $name = trim($_POST['name']);
         $index = trim($_POST['index']);
         $hash = trim($_POST['hash']);
+        $oldHash = $hash;
         $hash = $hash ? md5($hash) : '';
         $typeLimit = trim($_POST['typeLimit']);
         $actualType = trim($_POST['actualType']);
@@ -108,6 +151,28 @@ class Upload
                 )
             );
         }
+        // 对上传文件的判断
+        if ($_FILES['chunk']['error'] != 0) {
+            $errors = array(
+                0 => 'There is no error, the file uploaded with success',
+                1 => 'The uploaded file exceeds the upload_max_filesize directive in php.ini',
+                2 => 'The uploaded file exceeds the MAX_FILE_SIZE directive that was specified in the HTML form',
+                3 => 'The uploaded file was only partially uploaded',
+                4 => 'No file was uploaded',
+                6 => 'Missing a temporary folder',
+                7 => 'Failed to write file to disk.',
+                8 => 'A PHP extension stopped the file upload.',
+            );
+            $errmsg = $errors[$_FILES['chunk']['error']] ? $errors[$_FILES['chunk']['error']] : 'server error';
+            return array(
+                'status' => 0,
+                'code' => 500,
+                'data' => array(
+                    'errmsgCode' => $_FILES['chunk']['error'],
+                    'errmsg' => $errmsg,
+                )
+            );
+        }
         // 415 是格式错误 413 请求的实体过大
         // 判断大小 切片大小 10M = 10 * 1024 * 1024
         if ($_FILES['chunk']['size'] > $this->opts['chunkSize']) {
@@ -122,7 +187,16 @@ class Upload
         $filesize = trim($_POST['filesize']);
         $freeSize = trim($_POST['freeSize']);
         $this->initUploadDir($filesize, $hash, $freeSize);
+        
+        $this->opts['file'] = array(
+            'oldHash' => $oldHash,
+            'hash' => $hash
+        );
         $chunkDir = $this->opts['chunkDir'] . "$hash";
+        if (!is_dir($chunkDir)) {
+          mkdir($chunkDir);
+          chmod($chunkDir, 0777);
+        }
         // 文件类型判断，判断文件头信息，所以只判断第一个分片文件就行了
         // 不是上传第一个分片，要检查是否有第一个分片，如果没有要检查当前分片
         $firstFileName = "$hash/$hash-0";
@@ -131,13 +205,14 @@ class Upload
                 'status' => 0,
                 'code' => 412,
                 'data' => array(
-                    'errmsg' => 'filetype error'
+                    'errmsg' => 'filetype set error'
                 )
             );
         }
         // 是否要进行类型检查
         $checkType = false;
-        if ($first == 1 || !is_file($this->opts['chunkDir'] . $firstFileName)) {
+        $firstExist = is_file($this->opts['chunkDir'] . $firstFileName);
+        if ($first == 1 || !$firstExist) {
             $checkType = true;
             if (!$this->checkFileType($this->opts['typeLimit'], $_FILES['chunk']['tmp_name'])) {
                 // 删除上传的文件
@@ -160,15 +235,10 @@ class Upload
                     'status' => 0,
                     'code' => 412,
                     'data' => array(
-                        'errmsg' => 'filetype error'
+                        'errmsg' => 'jpg filetype error'
                     )
                 );
             }
-        }
-
-        if (!is_dir($chunkDir)) {
-          mkdir($chunkDir);
-          chmod($chunkDir, 0777);
         }
 
         $filename = $chunkDir . '/' . $hash . '-' .$index;
@@ -176,11 +246,9 @@ class Upload
         return array(
           'status' => 1,
           'code' => 0,
-          'chunkDir' => $this->opts['chunkDir'],
           'data' => array(
             'msg' => '切片上传成功',
-            'checkType' => $checkType,
-            'firstFileName' => $firstFileName
+            'checkType' => $checkType
           )
         );
     }
@@ -212,7 +280,13 @@ class Upload
 
         $this->initUploadDir($filesize, $hash, $freeSize);
 
-        $filePath = $this->opts['uploadDir'] . "$hash.$ext";
+        $filename = $hash.'.'.$ext;
+        $this->opts['file'] = array(
+            'oldHash' => $oldHash,
+            'hash' => $hash,
+            'ext' => $ext
+        );
+        $filePath = $this->opts['uploadDir'] . $filename;
         $chunkDir = $this->opts['chunkDir'] . "$hash";
 
         $chunks = $this->getUploadedList($chunkDir);
@@ -234,7 +308,7 @@ class Upload
         unset($handle);
         // 为安全起见再要同时删除一下旧的2个有可能存储临时文件的目录
         if ($hash){
-            $cmd = "rm -rf /tmp/$hash ;rm -rf " . $this->opts['webRoot'] . "/Upload/$hash ;";
+            $cmd = "rm -rf /tmp/Upload/$hash/* ;rm -rf " . $this->opts['webRoot'] . "/Upload/$hash/* ;";
             $cmd = "/mnt/heidun/apacheroot '$cmd'";
             exec($cmd);
         }
@@ -256,12 +330,20 @@ class Upload
           'status' => 1,
           'code' => 0,
           'data' => array(
-            // 'md5sum' => $md5sum,
-            // 'oldHash' => $oldHash,
             'spentTime' => $spentTime,
             'msg' => '合并文件成功',
+            'upgradeTip' => '',
+            'upgradeparam' => '',
           )
         );
+    }
+    /**
+    * 获取配置信息
+    *
+    */
+    public function getOpts()
+    {
+        return $this->opts;
     }
     
     /**
@@ -386,28 +468,31 @@ class Upload
     */
     private function initUploadDir($filesize, $hash, $freeSize = null)
     {
+      if (!$this->opts['autoSetPath']){
+          return 0;
+      }
       // 检测 /tmp 剩余目录大小是否够升级用
       if (!$freeSize) {
         $freeSize = $this->getTmpDirFreeSize();
       }
-      if ($freeSize > $filesize * 1.3 + $this->opts['frozenSize']) {
+      if ($freeSize > $filesize * $this->opts['tmpMultiple'] + $this->opts['frozenSize']) {
           // 大于上传文件的 2倍多100M
-          $this->opts['uploadDir'] = '/tmp/';
-          $this->opts['chunkDir'] = '/tmp/';
+          $this->opts['uploadDir'] = '/tmp/Upload/';
+          $this->opts['chunkDir'] = '/tmp/Upload/';
       } elseif ($freeSize > $filesize + $this->opts['frozenSize']) {
           // 大于上传文件的 1倍多100M
           $this->opts['uploadDir'] = $this->opts['webRoot'] . '/Upload/';
-          $this->opts['chunkDir'] = '/tmp/';
+          $this->opts['chunkDir'] = '/tmp/Upload/';
       } else {
           $this->opts['uploadDir'] = $this->opts['webRoot'] . '/Upload/';
           $this->opts['chunkDir'] = $this->opts['webRoot'] . '/Upload/';
       }
       // 如果内存中已经存在 hash 分片目录且目录中有文件
-      $cmd = 'ls /tmp/' . $hash.' -l | grep "^-" | wc -l';
+      $cmd = 'ls /tmp/Upload/' . $hash.' -l | grep "^-" | wc -l';
       $cmd = "/mnt/heidun/apacheroot '$cmd'";
       exec($cmd, $res, $i);
       if ($res[0] > 0) {
-          $this->opts['chunkDir'] = '/tmp/';
+          $this->opts['chunkDir'] = '/tmp/Upload/';
       }
       return $freeSize;
     }

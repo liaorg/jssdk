@@ -26,14 +26,15 @@ class UploadController extends Controller
         $result = $this->upload->checkfile();
         $this->returnSuccess($result['data']);
     }
-    // 文件上传
+    // 分片文件上传
     public function uploadfile()
     {
         $result = $this->upload->uploadfile();
         if ($result['status']) {
             /* if ($result['data']['checkType']) {
                 // 用户自定义文件类型判断
-                $file = $result['chunkDir'] . $result['data']['firstFileName'];
+                $opts = $this->upload->getOpts();
+                $file = $opts['chunkDir'] . $opts['file']['hash'].'/'.$opts['file']['hash'].'-0';
                 $blob = file_get_contents($file, NULL, NULL, 0, 100);
                 $headFlag = $this->upload->blobToString($blob);
                 if (!strpos($headFlag, '75 70 64 61 74 65 2E 74 67 7A')) {
@@ -46,13 +47,12 @@ class UploadController extends Controller
                     $this->returnServerError(412, $msg);
                 }
             } */
-            unset($result['data']['firstFileName']);
             $this->returnSuccess($result['data']);
         } else {
             $this->returnServerError($result['code'], $result['data']);
         }
     }
-    // 文件合并
+    // 分片文件合并
     public function mergefile()
     {
         $result = $this->upload->mergefile();

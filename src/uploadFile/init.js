@@ -25,10 +25,8 @@ const uploadFile = (opts = {}) => {
     // 接收三个参数：file, blobToString, typeLimit
     // 返回 true|false
     customerCheckFileType: null,
-    // 上传成功后的业务处理调用
+    // 上传成功后的业务处理调用，参数为返回信息
     success: null,
-    // 上传失败后的业务处理调用
-    error: null,
   };
   opts.limit = opts.limit < 4 ? 4 : opts.limit;
   opts.limit = opts.limit > 10 ? 10 : opts.limit;
