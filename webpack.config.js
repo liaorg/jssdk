@@ -35,15 +35,27 @@ module.exports = {
   },
   mode: 'production', // development production
   module: {
-    rules: [
-      {
-        test: /\.js$/,
-        exclude: /(node_modules)/,
-        use: {
-          loader: 'babel-loader',
-        },
+    rules: [{
+      test: /\.js$/,
+      exclude: /(node_modules)/,
+      use: {
+        loader: 'babel-loader',
+        options: {
+          presets: [
+            ["@babel/preset-env", {
+              "useBuiltIns": "usage",
+              "corejs": {
+                "version": 3,
+                "proposals": true
+              },
+              "targets": {
+                "ie": "11"
+              }
+            }]
+          ]
+        }
       },
-    ],
+    }, ],
   },
   devtool: 'cheap-module-source-map', // eval-cheap-module-source-map cheap-module-source-map
   // optimization: {

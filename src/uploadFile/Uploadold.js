@@ -1,6 +1,5 @@
 import {
-  $,
-  base64Encode,
+  $
 } from '../common/utils';
 
 import SparkMD5 from 'spark-md5';
@@ -225,29 +224,13 @@ class Upload {
     this[render](opts);
     // 绑定事件
     this[event](opts);
-
-    if (typeof this.opts.headers == 'function') {
-        this.headers = this.opts.headers;
-    } else {
-        this.headers = () => {return {}};
-    }
-    if (typeof this.opts.encrypt == 'function') {
-        this.encrypt = this.opts.encrypt;
-    } else {
-        this.encrypt = param => {
-            const jsonstr = JSON.stringify(param);
-            const sign = SparkMD5.hash(jsonstr);
-            const b64 = base64Encode(jsonstr);
-            return {enparams: sign + b64};
-        }
-    }
   }
 
   // 渲染上传表单
   [render](opts) {
     // id class 要加前缀 最好在增加随机数
     const pretip = opts.preUploadTip ? '<p class="upload-tip">'+opts.preUploadTip+'</p>' : '';
-    const tpl =
+    let tpl =
       style +
       `<div id="upload-wrapper" class="upload-wrapper">
           <div id="upload-text" class="upload-text">
@@ -729,7 +712,6 @@ class Upload {
     // 渲染分片
     this.uploadCube();
   }
-
   /**
    * 上传文件
    */
@@ -746,15 +728,12 @@ class Upload {
     // 问一下后端，文件是否上传过，如果没有，是否有存在的切片
     let checkData = {};
     try {
-      let param = {
+      checkData = await Axios.post(this.opts.url.checkFile, {
         hash: this.hash,
         ext: this.file.name.split('.').pop(),
         filesize: this.file.size,
         freeSize: this.freeSize,
         typeLimit: this.newType
-      };
-      checkData = await Axios.post(this.opts.url.checkFile, this.encrypt(param), {
-        headers: this.headers()
       });
     } catch (e) {
       return {
@@ -965,19 +944,18 @@ class Upload {
       })
       .map((chunk, index) => {
         // 转成promise
-        let param = {
-            chunk: chunk.chunk,
-            hash: chunk.hash,
-            name: chunk.name,
-            filesize: this.file.size,
-            freeSize: this.freeSize,
-            token: this.token,
-            typeLimit: this.opts.typeLimit,
-            index: chunk.index,
-            actualType: this.actualType
-        };
+        const form = new FormData();
+        form.append('chunk', chunk.chunk);
+        form.append('hash', chunk.hash);
+        form.append('name', chunk.name);
+        form.append('filesize', this.file.size);
+        form.append('freeSize', this.freeSize);
+        form.append('token', this.token);
+        form.append('typeLimit', this.opts.typeLimit);
+        form.append('index', chunk.index);
+        form.append('actualType', this.actualType);
         return {
-          param,
+          form,
           index: chunk.index,
           error: 0,
         };
@@ -992,8 +970,7 @@ class Upload {
     //         // 不是整体的进度条了，而是每个区块有自己的进度条，整体的进度条需要计算
     //         this.chunks[index].progress = Number(((progress.loaded / progress.total) * 100).toFixed(2))
     //         this.cubePregress(this.chunks[index])
-    //     },
-    //     headers: this.headers()
+    //     }
     // }).then(() => {
     //     this.uploadProgress()
     // }))
@@ -1047,7 +1024,7 @@ class Upload {
         const task = requests.shift();
         if (task) {
           const {
-            param,
+            form,
             index
           } = task;
           // 上传开始给一个初始值
@@ -1055,20 +1032,12 @@ class Upload {
           this.cubePregress(this.chunks[index]);
           try {
             if (index === 0) {
-              param.first = 1;
+              form.append('first', 1);
             }
             if (index === this.chunks.length - 1) {
-              param.last = 1;
+              form.append('last', 1);
             }
-            param.typeLimit = this.newType;
-            
-            const form = new FormData();
-            form.append('chunk', param.chunk);
-            delete param.chunk;
-            const encryptData = this.encrypt(param);
-            form.append('enparams', encryptData.enparams);
-            let headers = this.headers();
-            headers['Content-Type'] = this.defaultFileContentType;
+            form.append('typeLimit', this.newType);
             await Axios.post(this.opts.url.uploadFile, form, {
               onUploadProgress: (progress) => {
                 // 不是整体的进度条了，而是每个区块有自己的进度条，整体的进度条需要计算
@@ -1076,7 +1045,6 @@ class Upload {
                   ((progress.loaded / progress.total) * 100).toFixed(2)
                 );
               },
-              headers: headers
             }).then(() => {
               this.cubePregress(this.chunks[index]);
               this.uploadProgress();
@@ -1156,7 +1124,7 @@ class Upload {
   async mergeRequest() {
     try {
       this.setMeregFileProgress(15);
-      let param = {
+      const ret = await Axios.post(this.opts.url.mergeFile, {
         ext: this.file.name.split('.').pop(),
         hash: this.hash,
         filesize: this.file.size,
@@ -1164,9 +1132,6 @@ class Upload {
         startTime: this.startTime,
         token: this.token,
         typeLimit: this.newType
-      };
-      const ret = await Axios.post(this.opts.url.mergeFile, this.encrypt(param), {
-        headers: this.headers()
       });
       const {
         data = {}, code
